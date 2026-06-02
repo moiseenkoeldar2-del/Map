@@ -1,31 +1,67 @@
-function parseThreats(text) {
-    const lowerText = text.toLowerCase().trim();
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Ukraine Simulation Map</title>
 
-    // Полный отбой по всей стране
-    if (
-        lowerText === "чисто" ||
-        lowerText === "отбой" ||
-        lowerText === "небо чисто" ||
-        lowerText.includes("вся страна без загроз") ||
-        lowerText.includes("вся украина без загроз")
-    ) {
-        clearEntireMap();
-        return;
-    }
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
-    // Отбой по конкретному городу
-    if (lowerText.includes("чисто")) {
+<style>
+html, body { margin:0; height:100%; background:#111; }
+#map { height:100%; }
 
-        for (const cityName in cityCoordinates) {
-
-            if (lowerText.includes(cityName)) {
-                clearSpecificCity(cityName);
-                return;
-            }
-
-        }
-
-    }
-
-    // дальше идёт твой существующий код поиска угроз...
+#panel{
+position:absolute;
+top:10px;
+left:10px;
+z-index:999;
+background:#000;
+color:#0f0;
+padding:10px;
+font-family:monospace;
+border:1px solid #0f0;
 }
+
+.zone-red{
+fill:red;
+fill-opacity:0.25;
+color:red;
+}
+
+.zone-green{
+fill:green;
+fill-opacity:0.15;
+color:green;
+}
+</style>
+</head>
+
+<body>
+
+<div id="panel">🇺🇦 Game Map (Telegram Control)</div>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+
+// ================= MAP =================
+const map = L.map('map').setView([48.6, 31.2], 6);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:''
+}).addTo(map);
+
+// ================= BOT =================
+const BOT_TOKEN = 8877187091:AAGUMfMKSCitFae9Tdn0J-Lm5Wyabv5Tv6w;
+let lastUpdate = 0;
+
+// ================= CITIES =================
+const cities = {
+    "киев": [50.4501, 30.5234],
+    "днепр": [48.4647, 35.0462],
+    "харьков": [49.9935, 36.2304]
+};
+
+// ================= DISTRICTS =================
+const districts
