@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Военный радар: Канал @mapmyy</title>
+    <link rel="stylesheet" href="https://unpkg.com" />
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; background: #111; }
+        #map { height: 100vh; width: 100%; }
+        #log-panel {
+            position: absolute; bottom: 20px; left: 20px; width: 420px; max-height: 320px;
+            background: rgba(15, 15, 15, 0.95); color: #fff; z-index: 1000; padding: 15px;
+            border-radius: 8px; overflow-y: auto; font-size: 13px; box-shadow: 0 4px 20px rgba(0,0,0,0.8);
+            border: 1px solid #333;
+        }
+        .log-item { border-bottom: 1px solid #222; padding: 8px 0; font-size: 12px; }
+        .log-clean { color: #00ff00; font-weight: bold; border-bottom: 1px solid #222; padding: 8px 0; font-size: 12px; }
+        .status { color: #00ff00; font-size: 11px; margin-bottom: 8px; font-weight: bold; }
+        
+        /* Стили для неоновых маркеров */
+        .marker-bomber { background: #ffcc00; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 25px #ffcc00; animation: pulse-bomber 1s infinite alternate; }
+        .marker-kh101 { background: #ff0055; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 15px #ff0055; }
+        .marker-kalibr { background: #00ffff; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 15px #00ffff; }
+        .marker-shahed { background: #ffaa00; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 15px #ffaa00; }
+        .marker-ballistic { background: #b000ff; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 20px #b000ff; }
+        .marker-ship { background: #00aaff; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 20px #00aaff; }
+        .marker-launcher { background: #aa00ff; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 25px #aa00ff; animation: pulse-launcher 0.8s infinite alternate; }
+
+        /* Пульсация зоны добивания */
+        .leaflet-interactive[stroke="crimson"] {
+            animation: pulse-impact 0.5s infinite alternate;
+        }
+
+        @keyframes pulse-bomber { from { box-shadow: 0 0 10px #ffcc00; } to { box-shadow: 0 0 25px #ffcc00; } }
+        @keyframes pulse-launcher { from { box-shadow: 0 0 10px #aa00ff; } to { box-shadow: 0 0 25px #aa00ff; } }
+        @keyframes pulse-impact { from { fill-opacity: 0.2; } to { fill-opacity: 0.5; } }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+    <div id="log-panel">
+        <div class="status" id="status">Радар: Мониторинг канала @mapmyy...</div>
+        <b>Тактическая обстановка:</b>
+        <div id="logs"></div>
+    </div>
+
+    <script src="https://unpkg.com"></script>
+    <script>
+        // === НАСТРОЙКИ СВЯЗИ ===
+        const BOT_TOKEN = '8877187091:AAGUMfMKSCitFae9Tdn0J-Lm5Wyabv5Tv6w'; 
+        const CHANNEL_ID = '@mapmyy'; 
+
+        // Географическая база
+        const cityCoordinates = {
+            "киев": [50.4501, 30.5234], "белая церковь": [49.7989, 30.1153],
+            "днепр": [48.4647, 35.0462], "одесса": [46.4825, 30.7233],
+            "харьков": [49.9935, 36.2304], "запорожье": [47.8388, 35.1396],
+            "львов": [49.8397, 24.0297], "николаев": [46.9750, 31.9946],
+            "винница": [49.2331, 28.4682], "полтава": [49.5883, 34.5514],
+            "кривой рог": [47.9105, 33.3918], "кременчуг": [49.0703, 33.4053],
+            "умань": [48.7484, 30.2215], "крым": [45.3493, 34.4250],
+            "каспий": [44.0000, 49.0000], "волгодонск": [47.5142, 42.1428], 
+            "чёрное море": [43.5000, 32.5000], "черное море": [43.5000, 32.5000],
+            "таганрог": [47.2346, 38.8974], "брянск": [53.2521, 34.3717], "воронеж": [51.6601, 39.2006],
+            "чауда": [45.0033, 35.8405], "приморско-ахтарск": [46.0468, 38.1691],
+            "ахтарск": [46.0468, 38.1691], "сеща": [53.7144, 33.3422], "курск": [51.7494, 36.1939]
+        };
+
+        // База поиска (Исправлено на Таганрог)
+        const searchAliases = {
+            "киев": ["киев", "київе", "киив"],
+            "днепр": ["днепр", "дніпро", "днепре"],
+            "одесса": ["одесс", "одеса"],
+            "харьков": ["харьков", "харків"],
+            "запорожье": ["запорож", "запоріж"],
+            "кривой рог": ["кривой", "кривбас"],
+            "белая церковь": ["белая церк", "біла церк"],
+            "таганрог": ["таганрог", "таганроге", "таганрога"],
+            "брянск": ["брянск", "брянске", "брянска"],
+            "воронеж": ["воронеж", "воронеже", "воронежа"],
+            "крым": ["крым", "крим", "крыму"],
+            "каспий": ["каспий", "каспии", "каспия"],
+            "чёрное море": ["чёрное мор", "черное мор", "чф"]
+        };
+
+        const map = L.map('map').setView([48.3794, 31.1656], 5);
+        L.tileLayer('https://{s}://{z}/{x}/{y}{r}.png').addTo(map);
+
+        let lastUpdateId = 0;
+        let activeThreats = [];
+
+        async function checkTelegramUpdates() {
+            try {
+                const response = await fetch(`https://telegram.org{BOT_TOKEN}/getUpdates?offset=${lastUpdateId + 1}&timeout=30`);
+                const data = await response.json();
+                if (data.ok && data.result.length > 0) {
+                    document.getElementById('status').innerText = "🟢 Воздушное пространство сканируется...";
+                    for (const update of data.result) {
+                        lastUpdateId = update.update_id;
+                        if (update.channel_post && (update.channel_post.chat.id === CHANNEL_ID || update.channel_post.chat.username === 'mapmyy')) {
+                            const postText = update.channel_post.text;
+                            if (postText) parseThreats(postText);
+                        }
+                    }
+                }
+            } catch (error) { console.error(error); }
+            setTimeout(checkTelegramUpdates, 1000);
+        }
+
+        function clearEntireMap() {
+            activeThreats.forEach(threat => {
+                if (threat.marker) map.removeLayer(threat.marker);
+                if (threat.polyline) map.removeLayer(threat.polyline);
+                if (threat.circle) map.removeLayer(threat.circle);
+                if (threat.impactCircle) map.removeLayer(threat.impactCircle);
+                if (threat.bomber) map.removeLayer(threat.bomber);
+                if (threat.animId) cancelAnimationFrame(threat.animId);
+            });
+            activeThreats = [];
+            addLogMessage("🟢 НЕБО ЧИСТО: Все угрозы ликвидированы / Отбой", "log-clean");
+        }
+
+        function clearSpecificCity(cityName) {
+            activeThreats = activeThreats.filter(threat => {
+                if (threat.targetCity === cityName) {
+                    if (threat.marker) map.removeLayer(threat.marker);
+                    if (threat.polyline) map.removeLayer(threat.polyline);
+                    if (threat.circle) map.removeLayer(threat.circle);
+                    if (threat.impactCircle) map.removeLayer(threat.impactCircle);
+                    if (threat.bomber) map.removeLayer(threat.bomber);
+                    if (threat.animId) cancelAnimationFrame(threat.animId);
+                    return false;
+                }
+                return true;
+            });
+            addLogMessage(`🟢 ОТБОЙ: В районе города ${cityName.toUpperCase()} чисто`, "log-clean");
+        }
+
+        function addLogMessage(text, className = "log-item") {
+            const logsDiv = document.getElementById('logs');
+            const item = document.createElement('div');
+            item.className = className;
+            item.innerHTML = `[${new Date().toLocaleTimeString()}] ${text}`;
+            logsDiv.insertBefore(item, logsDiv.firstChild);
+        }
+
+        function parseThreats(text) {
+            const lowerText = text.toLowerCase().trim();
+
+            if (lowerText === "чисто" || lowerText === "отбой" || lowerText === "небо чисто") {
+                clearEntireMap();
+                return;
+            }
+
+            if (lowerText.includes("чисто") || lowerText.includes("отбой")) {
+                for (const [realName, aliases] of Object.entries(searchAliases)) {
+                    if (aliases.some(alias => lowerText.includes(alias))) {
+                        clearSpecificCity(realName);
+                        return;
+                    }
+                }
+            }
+
+            let threatType = null, label = "", color = "#ff0055", className = "marker-kh101";
+            let isBomberAction = false, isShipLaunch = false, isBallisticLaunch = false;
+
+            if (lowerText.includes("баллистик") || lowerText.includes("искандер") || lowerText.includes("кинжал") || lowerText.includes("kn-23") || lowerText.includes("бб") || lowerText.includes("угроза бб") || lowerText.includes("загроза бб")) {
+                threatType = "ballistic"; label = "⚡ БАЛЛИСТИКА"; color = "#b000ff"; className = "marker-ballistic"; isBallisticLaunch = true;
+            } else if (lowerText.includes("ту-95") || lowerText.includes("ту95") || lowerText.includes("взлет ту") || lowerText.includes("пуски х-101") || lowerText.includes("пуск х101")) {
+                threatType = "kh101"; label = "🚀 Ракета Х-101"; color = "#ff0055"; className = "marker-kh101"; isBomberAction = true;
+            } else if (lowerText.includes("калибр")) {
+                threatType = "kalibr"; label = "🚢 Ракета Калибр"; color = "#00ffff"; className = "marker-kalibr"; isShipLaunch = true;
+            } else if (lowerText.includes("шахед") || lowerText.includes("бпла") || lowerText.includes("дрон")) {
+                threatType = "shahed"; label = "🛸 БПЛА Шахед"; color = "#ffaa00"; className = "marker-shahed";
+            } else if (lowerText.includes("ракет")) {
